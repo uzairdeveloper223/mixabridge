@@ -70,7 +70,7 @@ addons/mixabridge/
 ## Limitations
 
 - Mixamo rigs only — the bone name table is built for Mixamo's `mixamorig:` naming convention
-- Godot 4.6+ — uses APIs that may not exist in earlier versions
+- Godot 4.4+ — uses APIs that may not exist in earlier versions
 - FBX/GLB/GLTF only — other 3D formats aren't tested
 - `.import` file editing — writes to `.import` files directly, may break if Godot changes the format
 - Blocking reimport — `reimport_files()` freezes the editor momentarily for large batches

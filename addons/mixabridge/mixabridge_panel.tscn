@@ -33,6 +33,13 @@ theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="ReprocessButton" type="Button" parent="Header"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Re-process"
+flat = true
+disabled = true
+
 [node name="ResetButton" type="Button" parent="Header"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -64,7 +71,7 @@ text = "Select Rigged Model (.fbx)"
 [node name="ModelStatusLabel" type="RichTextLabel" parent="Content/LeftColumn"]
 unique_name_in_owner = true
 layout_mode = 2
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 36)
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
@@ -107,10 +114,19 @@ layout_mode = 2
 text = "Step 3 — Add Animations & Process"
 theme_override_font_sizes/font_size = 14
 
-[node name="SelectAnimsButton" type="Button" parent="Content/LeftColumn"]
+[node name="AnimButtonRow" type="HBoxContainer" parent="Content/LeftColumn"]
+layout_mode = 2
+
+[node name="SelectAnimsButton" type="Button" parent="Content/LeftColumn/AnimButtonRow"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Add Animation Files (.fbx)"
+disabled = true
+
+[node name="RemoveAnimButton" type="Button" parent="Content/LeftColumn/AnimButtonRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Remove Selected"
 disabled = true
 
 [node name="AnimFileList" type="ItemList" parent="Content/LeftColumn"]
@@ -120,20 +136,25 @@ custom_minimum_size = Vector2(0, 50)
 size_flags_vertical = 3
 allow_reselect = true
 
-[node name="Step4Row" type="HBoxContainer" parent="Content/LeftColumn"]
+[node name="LibRow" type="HBoxContainer" parent="Content/LeftColumn"]
 layout_mode = 2
 
-[node name="LibNameLabel" type="Label" parent="Content/LeftColumn/Step4Row"]
+[node name="LibLabel" type="Label" parent="Content/LeftColumn/LibRow"]
 layout_mode = 2
-text = "Library Name:"
+text = "Library:"
 
-[node name="LibNameEdit" type="LineEdit" parent="Content/LeftColumn/Step4Row"]
+[node name="LibSelector" type="OptionButton" parent="Content/LeftColumn/LibRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-placeholder_text = "mixamo_anims"
 
-[node name="ProcessButton" type="Button" parent="Content/LeftColumn/Step4Row"]
+[node name="LibNameEdit" type="LineEdit" parent="Content/LeftColumn/LibRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "new_library_name"
+
+[node name="ProcessButton" type="Button" parent="Content/LeftColumn/LibRow"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "Process All"
@@ -189,3 +210,18 @@ size = Vector2i(800, 500)
 access = 0
 file_mode = 1
 filters = PackedStringArray("*.fbx;FBX Animation", "*.glb;GLB Animation", "*.gltf;GLTF Animation")
+
+[node name="RenameDialog" type="AcceptDialog" parent="."]
+unique_name_in_owner = true
+title = "Rename Animation"
+size = Vector2i(400, 120)
+
+[node name="RenameEdit" type="LineEdit" parent="RenameDialog"]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -40.0

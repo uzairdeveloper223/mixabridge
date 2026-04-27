@@ -59,6 +59,73 @@ func extract_and_build_library(
 	return library
 
 
+func extract_and_build_library_named(
+	anim_paths: PackedStringArray,
+	display_names: PackedStringArray,
+	library_name: String,
+) -> AnimationLibrary:
+	extracted_count = 0
+	failed_paths.clear()
+
+	var library := AnimationLibrary.new()
+
+	for i: int in range(anim_paths.size()):
+		var anim_path: String = anim_paths[i]
+		var user_name: String = display_names[i] if i < display_names.size() else ""
+
+		var packed_scene := load(anim_path) as PackedScene
+		if not packed_scene:
+			push_error("MixaBridge: cannot load animation scene " + anim_path)
+			failed_paths.append(anim_path)
+			continue
+
+		var instance := packed_scene.instantiate()
+		var anim_player := _find_animation_player(instance)
+
+		if not anim_player:
+			push_error(
+				"MixaBridge: no AnimationPlayer in " + anim_path
+			)
+			instance.queue_free()
+			failed_paths.append(anim_path)
+			continue
+
+		var added_from_this_file := false
+		var clip_index := 0
+		for lib_name: StringName in anim_player.get_animation_library_list():
+			var lib := anim_player.get_animation_library(lib_name)
+			for anim_name: StringName in lib.get_animation_list():
+				var anim := lib.get_animation(anim_name)
+				var final_name: StringName
+				if not user_name.is_empty() and clip_index == 0:
+					final_name = StringName(user_name)
+				elif not user_name.is_empty():
+					final_name = StringName(
+						user_name + "_" + str(clip_index)
+					)
+				else:
+					final_name = _derive_animation_name(
+						anim_path, String(anim_name)
+					)
+				var duplicate := anim.duplicate(true) as Animation
+				var add_err := library.add_animation(final_name, duplicate)
+				if add_err != OK:
+					push_error(
+						"MixaBridge: failed to add animation '"
+						+ final_name + "' from " + anim_path
+					)
+					continue
+				added_from_this_file = true
+				clip_index += 1
+
+		if added_from_this_file:
+			extracted_count += 1
+
+		instance.queue_free()
+
+	return library
+
+
 func add_library_to_player(
 	anim_player: AnimationPlayer,
 	library: AnimationLibrary,

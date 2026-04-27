@@ -38,7 +38,11 @@ No custom import plugins. No editor hacks. It works with Godot's existing pipeli
 3. **Select Rigged Model** — pick your `.fbx`, bones auto-map
 4. **Link AnimationPlayer** — click the AnimationPlayer in the Scene dock, then click "Link Selected AnimationPlayer"
 5. **Add Animation Files** — select your animation `.fbx` files (exported without skin from Mixamo)
-6. **Process All** — the library gets built and attached to your AnimationPlayer
+6. **Rename** — double-click any animation in the list to rename it before processing
+7. **Remove** — select an animation and click "Remove Selected" to drop it from the queue
+8. **Pick a library** — choose an existing AnimationLibrary on the player, or create a new one with a custom name
+9. **Process All** — the library gets built and attached to your AnimationPlayer
+10. **Re-process** — changed your mind? Edit the list and hit Re-process without resetting
 
 Full guide with screenshots: [uzair.ct.ws/mixabridge](http://uzair.ct.ws/mixabridge/index.html)
 

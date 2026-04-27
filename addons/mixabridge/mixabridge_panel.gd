@@ -2,6 +2,7 @@
 extends VBoxContainer
 
 const GENERATED_DIR := "res://addons/mixabridge/generated/"
+const NEW_LIBRARY_LABEL := "[ Create New Library ]"
 
 var _bone_mapper := MixaBridgeBoneMapper.new()
 var _import_configurator := MixaBridgeImportConfigurator.new()
@@ -11,39 +12,55 @@ var _model_path := ""
 var _bone_map: BoneMap = null
 var _bone_map_save_path := ""
 var _animation_paths: PackedStringArray = []
+var _animation_display_names: PackedStringArray = []
 var _linked_player: AnimationPlayer = null
 var _linked_player_path: NodePath = NodePath()
+var _has_processed := false
+var _renaming_index := -1
 
 @onready var _select_model_button: Button = %SelectModelButton
 @onready var _model_status_label: RichTextLabel = %ModelStatusLabel
 @onready var _link_player_button: Button = %LinkPlayerButton
 @onready var _player_status_label: Label = %PlayerStatusLabel
 @onready var _select_anims_button: Button = %SelectAnimsButton
+@onready var _remove_anim_button: Button = %RemoveAnimButton
 @onready var _anim_file_list: ItemList = %AnimFileList
+@onready var _lib_selector: OptionButton = %LibSelector
 @onready var _lib_name_edit: LineEdit = %LibNameEdit
 @onready var _process_button: Button = %ProcessButton
+@onready var _reprocess_button: Button = %ReprocessButton
 @onready var _bone_tree: Tree = %BoneTree
 @onready var _progress_bar: ProgressBar = %ProgressBar
 @onready var _status_label: Label = %StatusLabel
 @onready var _model_file_dialog: FileDialog = %ModelFileDialog
 @onready var _anim_file_dialog: FileDialog = %AnimFileDialog
 @onready var _reset_button: Button = %ResetButton
+@onready var _rename_dialog: AcceptDialog = %RenameDialog
+@onready var _rename_edit: LineEdit = %RenameEdit
 
 
 func _ready() -> void:
 	_select_model_button.pressed.connect(_on_select_model_pressed)
 	_link_player_button.pressed.connect(_on_link_player_pressed)
 	_select_anims_button.pressed.connect(_on_select_anims_pressed)
+	_remove_anim_button.pressed.connect(_on_remove_anim_pressed)
 	_process_button.pressed.connect(_on_process_pressed)
+	_reprocess_button.pressed.connect(_on_reprocess_pressed)
 	_reset_button.pressed.connect(_on_reset_pressed)
 	_model_file_dialog.file_selected.connect(_on_model_selected)
 	_anim_file_dialog.files_selected.connect(_on_anims_selected)
-	_lib_name_edit.text_changed.connect(_on_lib_name_changed)
+	_lib_selector.item_selected.connect(_on_lib_selector_changed)
+	_anim_file_list.item_selected.connect(_on_anim_item_selected)
+	_anim_file_list.item_activated.connect(_on_anim_item_double_clicked)
+	_rename_dialog.confirmed.connect(_on_rename_confirmed)
 
 	_bone_tree.set_column_title(0, "Mixamo Bone")
 	_bone_tree.set_column_title(1, "Godot Profile")
 	_bone_tree.set_column_expand(0, true)
 	_bone_tree.set_column_expand(1, true)
+
+	_lib_name_edit.visible = true
+	_lib_selector.visible = false
 
 	_set_status("Ready")
 
@@ -76,7 +93,9 @@ func _on_model_selected(path: String) -> void:
 	_progress_bar.value = 30.0
 	_set_status("Configuring model import...")
 
-	var config_err := _import_configurator.configure_model(path, _bone_map_save_path)
+	var config_err := _import_configurator.configure_model(
+		path, _bone_map_save_path
+	)
 	if config_err != OK:
 		_set_model_status(
 			"[color=red]Failed to configure import settings.[/color]"
@@ -120,30 +139,35 @@ func _on_model_selected(path: String) -> void:
 func _on_link_player_pressed() -> void:
 	var selected := EditorInterface.get_selection().get_selected_nodes()
 	if selected.is_empty():
-		_set_player_status("No node selected — click an AnimationPlayer in the Scene dock", false)
+		_set_player_status(
+			"No node selected — click an AnimationPlayer in the Scene dock",
+			false,
+		)
 		return
 
 	for node: Node in selected:
 		if node is AnimationPlayer:
-			_linked_player = node
-			_linked_player_path = node.get_path()
-			_set_player_status("Linked: " + node.name, true)
-			_select_anims_button.disabled = false
-			_update_process_button_state()
-			_set_status("AnimationPlayer linked — add animation files")
+			_link_animation_player(node)
 			return
-
 		var player := _find_animation_player_in_tree(node)
 		if player:
-			_linked_player = player
-			_linked_player_path = player.get_path()
-			_set_player_status("Linked: " + player.name + " (found under " + node.name + ")", true)
-			_select_anims_button.disabled = false
-			_update_process_button_state()
-			_set_status("AnimationPlayer linked — add animation files")
+			_link_animation_player(player)
 			return
 
-	_set_player_status("No AnimationPlayer found in selection — select the right node", false)
+	_set_player_status(
+		"No AnimationPlayer found in selection — select the right node",
+		false,
+	)
+
+
+func _link_animation_player(player: AnimationPlayer) -> void:
+	_linked_player = player
+	_linked_player_path = player.get_path()
+	_set_player_status("Linked: " + player.name, true)
+	_select_anims_button.disabled = false
+	_populate_library_selector()
+	_update_process_button_state()
+	_set_status("AnimationPlayer linked — add animation files")
 
 
 func _on_select_anims_pressed() -> void:
@@ -154,13 +178,68 @@ func _on_anims_selected(paths: PackedStringArray) -> void:
 	for path: String in paths:
 		if path not in _animation_paths:
 			_animation_paths.append(path)
-			_anim_file_list.add_item(path.get_file())
+			var display_name := path.get_file().get_basename().to_snake_case()
+			_animation_display_names.append(display_name)
+			_anim_file_list.add_item(display_name)
 
 	_update_process_button_state()
 	_set_status(str(_animation_paths.size()) + " animation file(s) queued")
 
 
+func _on_anim_item_selected(index: int) -> void:
+	_remove_anim_button.disabled = index < 0
+
+
+func _on_anim_item_double_clicked(index: int) -> void:
+	_renaming_index = index
+	_rename_edit.text = _animation_display_names[index]
+	_rename_dialog.popup_centered()
+	_rename_edit.select_all()
+	_rename_edit.grab_focus()
+
+
+func _on_rename_confirmed() -> void:
+	if _renaming_index < 0 or _renaming_index >= _animation_display_names.size():
+		return
+	var new_name := _rename_edit.text.strip_edges().to_snake_case()
+	if new_name.is_empty():
+		return
+	_animation_display_names[_renaming_index] = new_name
+	_anim_file_list.set_item_text(_renaming_index, new_name)
+	_renaming_index = -1
+
+
+func _on_remove_anim_pressed() -> void:
+	var selected_items := _anim_file_list.get_selected_items()
+	if selected_items.is_empty():
+		return
+
+	for i: int in range(selected_items.size() - 1, -1, -1):
+		var idx: int = selected_items[i]
+		_anim_file_list.remove_item(idx)
+		_animation_paths.remove_at(idx)
+		_animation_display_names.remove_at(idx)
+
+	_remove_anim_button.disabled = true
+	_update_process_button_state()
+	_set_status(str(_animation_paths.size()) + " animation file(s) queued")
+
+
+func _on_lib_selector_changed(index: int) -> void:
+	var is_new := _lib_selector.get_item_text(index) == NEW_LIBRARY_LABEL
+	_lib_name_edit.visible = is_new
+	_update_process_button_state()
+
+
 func _on_process_pressed() -> void:
+	_run_process()
+
+
+func _on_reprocess_pressed() -> void:
+	_run_process()
+
+
+func _run_process() -> void:
 	if _animation_paths.is_empty() or not _bone_map or not _linked_player:
 		return
 
@@ -171,11 +250,13 @@ func _on_process_pressed() -> void:
 		_update_process_button_state()
 		return
 
-	var library_name := _lib_name_edit.text.strip_edges()
+	var library_name := _resolve_library_name()
 	if library_name.is_empty():
-		library_name = _lib_name_edit.placeholder_text
+		_set_status("Enter a library name")
+		return
 
 	_process_button.disabled = true
+	_reprocess_button.disabled = true
 	_select_anims_button.disabled = true
 	_select_model_button.disabled = true
 	_link_player_button.disabled = true
@@ -198,8 +279,8 @@ func _on_process_pressed() -> void:
 	_progress_bar.value = 85.0
 	_set_status("Extracting animations...")
 
-	var library := _animation_extractor.extract_and_build_library(
-		_animation_paths, library_name
+	var library := _animation_extractor.extract_and_build_library_named(
+		_animation_paths, _animation_display_names, library_name
 	)
 
 	var save_path := "res://animations/" + library_name + ".tres"
@@ -211,6 +292,7 @@ func _on_process_pressed() -> void:
 		_linked_player, library, library_name
 	)
 
+	_has_processed = true
 	var result_msg := (
 		"Done — " + str(_animation_extractor.extracted_count)
 		+ " animation(s) added to " + _linked_player.name
@@ -228,6 +310,7 @@ func _on_process_pressed() -> void:
 	_set_status(result_msg)
 	_progress_bar.value = 100.0
 	_restore_buttons()
+	_populate_library_selector()
 
 
 func _on_reset_pressed() -> void:
@@ -235,22 +318,65 @@ func _on_reset_pressed() -> void:
 	_bone_map = null
 	_bone_map_save_path = ""
 	_animation_paths.clear()
+	_animation_display_names.clear()
 	_linked_player = null
 	_linked_player_path = NodePath()
+	_has_processed = false
+	_renaming_index = -1
 	_anim_file_list.clear()
 	_bone_tree.clear()
 	_lib_name_edit.text = ""
+	_lib_name_edit.visible = true
+	_lib_selector.visible = false
+	_lib_selector.clear()
 	_link_player_button.disabled = true
 	_select_anims_button.disabled = true
+	_remove_anim_button.disabled = true
 	_process_button.disabled = true
+	_reprocess_button.disabled = true
 	_model_status_label.text = ""
 	_set_player_status("No AnimationPlayer linked", false)
 	_progress_bar.value = 0.0
 	_set_status("Ready")
 
 
-func _on_lib_name_changed(_new_text: String) -> void:
-	_update_process_button_state()
+func _resolve_library_name() -> String:
+	if _lib_selector.visible and _lib_selector.selected >= 0:
+		var selected_text := _lib_selector.get_item_text(_lib_selector.selected)
+		if selected_text != NEW_LIBRARY_LABEL:
+			return selected_text
+
+	var name := _lib_name_edit.text.strip_edges()
+	if name.is_empty():
+		name = _lib_name_edit.placeholder_text
+	return name
+
+
+func _populate_library_selector() -> void:
+	_lib_selector.clear()
+
+	if not _linked_player or not is_instance_valid(_linked_player):
+		_lib_selector.visible = false
+		_lib_name_edit.visible = true
+		return
+
+	var lib_names := _linked_player.get_animation_library_list()
+	if lib_names.is_empty():
+		_lib_selector.visible = false
+		_lib_name_edit.visible = true
+		return
+
+	_lib_selector.visible = true
+
+	for lib_name: StringName in lib_names:
+		var display := String(lib_name)
+		if display.is_empty():
+			display = "(default)"
+		_lib_selector.add_item(display)
+
+	_lib_selector.add_item(NEW_LIBRARY_LABEL)
+	_lib_selector.select(_lib_selector.item_count - 1)
+	_lib_name_edit.visible = true
 
 
 func _populate_bone_tree() -> void:
@@ -300,6 +426,7 @@ func _update_process_button_state() -> void:
 		and not _animation_paths.is_empty()
 	)
 	_process_button.disabled = not ready
+	_reprocess_button.disabled = not _has_processed
 
 
 func _restore_buttons() -> void:

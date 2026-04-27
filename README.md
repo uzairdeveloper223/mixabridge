@@ -1,6 +1,6 @@
 # MixaBridge
 
-Godot 4.6 editor addon that automates Mixamo animation retargeting and library construction.
+Godot 4.4+ editor addon that automates Mixamo animation retargeting and library construction.
 
 Importing Mixamo animations into Godot means opening Advanced Import Settings for every file, creating BoneMaps, assigning SkeletonProfileHumanoid, configuring retarget options, reimporting, then manually building AnimationLibraries. MixaBridge does all of that in three clicks.
 
@@ -89,3 +89,4 @@ Uzair Mughal
 - [uzair.is-a.dev](https://uzair.is-a.dev)
 - [contact@uzair.is-a.dev](mailto:contact@uzair.is-a.dev)
 - [github.com/uzairdeveloper223](https://github.com/uzairdeveloper223)
+

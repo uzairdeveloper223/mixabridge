@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://addons/mixabridge/mixabridge_panel.gd" id="1"]
+[ext_resource type="Texture2D" path="res://addons/mixabridge/icon.svg" id="2"]
 
 [node name="MixaBridgePanel" type="VBoxContainer"]
 offset_right = 1920.0
@@ -14,6 +15,7 @@ layout_mode = 2
 [node name="Icon" type="TextureRect" parent="Header"]
 layout_mode = 2
 custom_minimum_size = Vector2(24, 24)
+texture = ExtResource("2")
 expand_mode = 3
 stretch_mode = 5
 

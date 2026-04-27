@@ -95,9 +95,12 @@ func _derive_animation_name(
 	var base := file_path.get_file().get_basename()
 	base = base.replace("mixamorig_", "").replace("mixamorig:", "")
 	base = base.to_snake_case()
-	if anim_name.is_empty() or anim_name == "default" or anim_name == "mixamo.com":
+	var skip_names := ["", "default", "mixamo.com", "mixamo_com"]
+	if anim_name in skip_names:
 		return StringName(base)
 	var clean_anim := anim_name.to_snake_case()
+	if clean_anim in ["mixamo_com", "default"]:
+		return StringName(base)
 	if clean_anim == base:
 		return StringName(base)
-	return StringName(base)
+	return StringName(base + "_" + clean_anim)

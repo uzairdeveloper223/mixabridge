@@ -76,7 +76,7 @@ func _on_model_selected(path: String) -> void:
 	_progress_bar.value = 30.0
 	_set_status("Configuring model import...")
 
-	var config_err := _import_configurator.configure_model(path, _bone_map)
+	var config_err := _import_configurator.configure_model(path, _bone_map_save_path)
 	if config_err != OK:
 		_set_model_status(
 			"[color=red]Failed to configure import settings.[/color]"
@@ -184,7 +184,7 @@ func _on_process_pressed() -> void:
 	_set_status("Configuring animation imports...")
 
 	var config_err := _import_configurator.configure_animations(
-		_animation_paths, _bone_map
+		_animation_paths, _bone_map_save_path
 	)
 	if config_err != OK:
 		_set_status("Error configuring animation imports")

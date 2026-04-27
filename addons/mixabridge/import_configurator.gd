@@ -15,15 +15,17 @@ const RETARGET_PARAMS: Dictionary = {
 }
 
 
-func configure_model(model_path: String, bone_map: BoneMap) -> Error:
-	return _apply_retarget_settings(model_path, bone_map)
+func configure_model(
+	model_path: String, bone_map_path: String
+) -> Error:
+	return _apply_retarget_settings(model_path, bone_map_path)
 
 
 func configure_animations(
-	anim_paths: PackedStringArray, bone_map: BoneMap
+	anim_paths: PackedStringArray, bone_map_path: String
 ) -> Error:
 	for anim_path: String in anim_paths:
-		var err := _apply_retarget_settings(anim_path, bone_map)
+		var err := _apply_retarget_settings(anim_path, bone_map_path)
 		if err != OK:
 			push_error(
 				"MixaBridge: failed to configure import for " + anim_path
@@ -45,7 +47,7 @@ func reimport_animations(anim_paths: PackedStringArray) -> void:
 
 
 func _apply_retarget_settings(
-	file_path: String, bone_map: BoneMap
+	file_path: String, bone_map_path: String
 ) -> Error:
 	var import_path := file_path + ".import"
 	var global_import_path := ProjectSettings.globalize_path(import_path)
@@ -53,6 +55,11 @@ func _apply_retarget_settings(
 	if not FileAccess.file_exists(import_path):
 		push_error("MixaBridge: .import file not found at " + import_path)
 		return ERR_FILE_NOT_FOUND
+
+	var bone_map := load(bone_map_path) as BoneMap
+	if not bone_map:
+		push_error("MixaBridge: cannot load BoneMap at " + bone_map_path)
+		return ERR_CANT_OPEN
 
 	var config := ConfigFile.new()
 	var err := config.load(global_import_path)

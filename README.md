@@ -48,7 +48,15 @@ Full guide with screenshots: [uzair.ct.ws/mixabridge](http://uzair.ct.ws/mixabri
 
 ## Install
 
-Copy `addons/mixabridge/` into your project's `addons/` directory. Enable in Project Settings > Plugins.
+**From the Godot Asset Library (recommended):**
+1. In the Godot editor, open **AssetLib** (top center)
+2. Search for **MixaBridge**
+3. Click Install
+
+**Manual:**
+Copy `addons/mixabridge/` into your project's `addons/` directory.
+
+Then enable in **Project Settings > Plugins > MixaBridge**.
 
 ## Project structure
 

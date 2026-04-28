@@ -17,6 +17,7 @@ var _linked_player: AnimationPlayer = null
 var _linked_player_path: NodePath = NodePath()
 var _has_processed := false
 var _renaming_index := -1
+var _existing_anim_count := 0
 
 @onready var _select_model_button: Button = %SelectModelButton
 @onready var _model_status_label: RichTextLabel = %ModelStatusLabel
@@ -187,10 +188,12 @@ func _on_anims_selected(paths: PackedStringArray) -> void:
 
 
 func _on_anim_item_selected(index: int) -> void:
-	_remove_anim_button.disabled = index < 0
+	_remove_anim_button.disabled = index < 0 or index < _existing_anim_count
 
 
 func _on_anim_item_double_clicked(index: int) -> void:
+	if index < _existing_anim_count:
+		return
 	_renaming_index = index
 	_rename_edit.text = _animation_display_names[index]
 	_rename_dialog.popup_centered()
@@ -216,18 +219,22 @@ func _on_remove_anim_pressed() -> void:
 
 	for i: int in range(selected_items.size() - 1, -1, -1):
 		var idx: int = selected_items[i]
+		if idx < _existing_anim_count:
+			continue
 		_anim_file_list.remove_item(idx)
-		_animation_paths.remove_at(idx)
+		_animation_paths.remove_at(idx - _existing_anim_count)
 		_animation_display_names.remove_at(idx)
 
 	_remove_anim_button.disabled = true
 	_update_process_button_state()
-	_set_status(str(_animation_paths.size()) + " animation file(s) queued")
+	var new_count := _animation_paths.size()
+	_set_status(str(new_count) + " new animation file(s) queued")
 
 
 func _on_lib_selector_changed(index: int) -> void:
 	var is_new := _lib_selector.get_item_text(index) == NEW_LIBRARY_LABEL
 	_lib_name_edit.visible = is_new
+	_load_existing_library_anims()
 	_update_process_button_state()
 
 
@@ -279,8 +286,12 @@ func _run_process() -> void:
 	_progress_bar.value = 85.0
 	_set_status("Extracting animations...")
 
+	var new_display_names: PackedStringArray = []
+	for i: int in range(_existing_anim_count, _animation_display_names.size()):
+		new_display_names.append(_animation_display_names[i])
+
 	var library := _animation_extractor.extract_and_build_library_named(
-		_animation_paths, _animation_display_names, library_name
+		_animation_paths, new_display_names, library_name
 	)
 
 	var save_path := "res://animations/" + library_name + ".tres"
@@ -323,6 +334,7 @@ func _on_reset_pressed() -> void:
 	_linked_player_path = NodePath()
 	_has_processed = false
 	_renaming_index = -1
+	_existing_anim_count = 0
 	_anim_file_list.clear()
 	_bone_tree.clear()
 	_lib_name_edit.text = ""
@@ -377,6 +389,61 @@ func _populate_library_selector() -> void:
 	_lib_selector.add_item(NEW_LIBRARY_LABEL)
 	_lib_selector.select(_lib_selector.item_count - 1)
 	_lib_name_edit.visible = true
+
+
+func _load_existing_library_anims() -> void:
+	for i: int in range(_existing_anim_count - 1, -1, -1):
+		_anim_file_list.remove_item(i)
+		_animation_display_names.remove_at(i)
+	_existing_anim_count = 0
+
+	if not _lib_selector.visible or not _linked_player:
+		return
+	if not is_instance_valid(_linked_player):
+		return
+
+	var selected_text := _lib_selector.get_item_text(_lib_selector.selected)
+	if selected_text == NEW_LIBRARY_LABEL:
+		return
+
+	var lib_name := selected_text
+	if lib_name == "(default)":
+		lib_name = ""
+
+	if not _linked_player.has_animation_library(lib_name):
+		return
+
+	var lib := _linked_player.get_animation_library(lib_name)
+	var existing_anims := lib.get_animation_list()
+
+	var anim_names: Array[StringName] = []
+	for a: StringName in existing_anims:
+		anim_names.append(a)
+
+	_anim_file_list.clear()
+	var new_names: PackedStringArray = []
+	for i: int in range(_existing_anim_count, _animation_display_names.size()):
+		new_names.append(_animation_display_names[i])
+	_animation_display_names.clear()
+
+	for anim_name: StringName in anim_names:
+		var name_str := String(anim_name)
+		_animation_display_names.append(name_str)
+		_anim_file_list.add_item("[existing] " + name_str)
+		var idx := _anim_file_list.item_count - 1
+		_anim_file_list.set_item_custom_fg_color(idx, Color(0.54, 0.54, 0.6))
+
+	_existing_anim_count = anim_names.size()
+
+	for name_str: String in new_names:
+		_animation_display_names.append(name_str)
+		_anim_file_list.add_item(name_str)
+
+	if _existing_anim_count > 0:
+		_set_status(
+			str(_existing_anim_count) + " existing + "
+			+ str(_animation_paths.size()) + " new animation(s)"
+		)
 
 
 func _populate_bone_tree() -> void:

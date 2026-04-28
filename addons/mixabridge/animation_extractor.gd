@@ -131,10 +131,26 @@ func add_library_to_player(
 	library: AnimationLibrary,
 	library_name: String,
 ) -> Error:
-	if anim_player.has_animation_library(library_name):
-		anim_player.remove_animation_library(library_name)
+	if not anim_player.has_animation_library(library_name):
+		return anim_player.add_animation_library(library_name, library)
+	var existing_lib := anim_player.get_animation_library(library_name)
+	for anim_name: StringName in library.get_animation_list():
+		var anim := library.get_animation(anim_name)
+		var final_name := _deduplicate_name(anim_name, existing_lib)
+		existing_lib.add_animation(final_name, anim)
+	return OK
 
-	return anim_player.add_animation_library(library_name, library)
+
+func _deduplicate_name(
+	name: StringName, library: AnimationLibrary
+) -> StringName:
+	if not library.has_animation(name):
+		return name
+	var base := String(name)
+	var i := 2
+	while library.has_animation(StringName(base + "_" + str(i))):
+		i += 1
+	return StringName(base + "_" + str(i))
 
 
 func save_library(

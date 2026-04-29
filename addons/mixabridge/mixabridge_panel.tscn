@@ -26,7 +26,7 @@ theme_override_font_sizes/font_size = 18
 
 [node name="Version" type="Label" parent="Header"]
 layout_mode = 2
-text = "v1.0.1"
+text = "v1.0.2"
 theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
 
 [node name="Spacer" type="Control" parent="Header"]
@@ -129,12 +129,14 @@ layout_mode = 2
 text = "Remove Selected"
 disabled = true
 
-[node name="AnimFileList" type="ItemList" parent="Content/LeftColumn"]
+[node name="AnimFileList" type="Tree" parent="Content/LeftColumn"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(0, 50)
 size_flags_vertical = 3
-allow_reselect = true
+columns = 3
+column_titles_visible = true
+hide_root = true
 
 [node name="LibRow" type="HBoxContainer" parent="Content/LeftColumn"]
 layout_mode = 2

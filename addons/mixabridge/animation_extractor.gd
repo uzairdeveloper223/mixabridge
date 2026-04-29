@@ -62,6 +62,8 @@ func extract_and_build_library(
 func extract_and_build_library_named(
 	anim_paths: PackedStringArray,
 	display_names: PackedStringArray,
+	loops: Array[bool],
+	rm_roots: Array[bool],
 	library_name: String,
 ) -> AnimationLibrary:
 	extracted_count = 0
@@ -72,6 +74,8 @@ func extract_and_build_library_named(
 	for i: int in range(anim_paths.size()):
 		var anim_path: String = anim_paths[i]
 		var user_name: String = display_names[i] if i < display_names.size() else ""
+		var loop: bool = loops[i] if i < loops.size() else false
+		var rm_root: bool = rm_roots[i] if i < rm_roots.size() else false
 
 		var packed_scene := load(anim_path) as PackedScene
 		if not packed_scene:
@@ -108,6 +112,10 @@ func extract_and_build_library_named(
 						anim_path, String(anim_name)
 					)
 				var duplicate := anim.duplicate(true) as Animation
+				if loop:
+					duplicate.loop_mode = Animation.LOOP_LINEAR
+				if rm_root:
+					remove_root_track(duplicate)
 				var add_err := library.add_animation(final_name, duplicate)
 				if add_err != OK:
 					push_error(
@@ -160,6 +168,22 @@ func save_library(
 	if not DirAccess.dir_exists_absolute(dir_path):
 		DirAccess.make_dir_recursive_absolute(dir_path)
 	return ResourceSaver.save(library, save_path)
+
+
+func remove_root_track(anim: Animation) -> void:
+	for i: int in range(anim.get_track_count() - 1, -1, -1):
+		var path := anim.track_get_path(i)
+		if path.get_name_count() > 0:
+			var bone_name := path.get_subname(0)
+			if bone_name in ["Root", "Hips", "mixamorig_Hips"] and anim.track_get_type(i) == Animation.TYPE_POSITION_3D:
+				var key_count := anim.track_get_key_count(i)
+				if key_count > 0:
+					var first_pos: Vector3 = anim.track_get_key_value(i, 0)
+					for k: int in range(key_count):
+						var pos: Vector3 = anim.track_get_key_value(i, k)
+						pos.x = first_pos.x
+						pos.z = first_pos.z
+						anim.track_set_key_value(i, k, pos)
 
 
 func _find_animation_player(node: Node) -> AnimationPlayer:

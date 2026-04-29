@@ -13,6 +13,8 @@ var _bone_map: BoneMap = null
 var _bone_map_save_path := ""
 var _animation_paths: PackedStringArray = []
 var _animation_display_names: PackedStringArray = []
+var _animation_loop: Array[bool] = []
+var _animation_rm_root: Array[bool] = []
 var _linked_player: AnimationPlayer = null
 var _linked_player_path: NodePath = NodePath()
 var _has_processed := false
@@ -25,7 +27,7 @@ var _existing_anim_count := 0
 @onready var _player_status_label: Label = %PlayerStatusLabel
 @onready var _select_anims_button: Button = %SelectAnimsButton
 @onready var _remove_anim_button: Button = %RemoveAnimButton
-@onready var _anim_file_list: ItemList = %AnimFileList
+@onready var _anim_file_list: Tree = %AnimFileList
 @onready var _lib_selector: OptionButton = %LibSelector
 @onready var _lib_name_edit: LineEdit = %LibNameEdit
 @onready var _process_button: Button = %ProcessButton
@@ -51,8 +53,18 @@ func _ready() -> void:
 	_model_file_dialog.file_selected.connect(_on_model_selected)
 	_anim_file_dialog.files_selected.connect(_on_anims_selected)
 	_lib_selector.item_selected.connect(_on_lib_selector_changed)
-	_anim_file_list.item_selected.connect(_on_anim_item_selected)
-	_anim_file_list.item_activated.connect(_on_anim_item_double_clicked)
+	_anim_file_list.item_selected.connect(_on_anim_tree_item_selected)
+	_anim_file_list.item_activated.connect(_on_anim_tree_item_activated)
+	_anim_file_list.item_edited.connect(_on_anim_tree_item_edited)
+
+	_anim_file_list.set_column_title(0, "Animation")
+	_anim_file_list.set_column_title(1, "Loop")
+	_anim_file_list.set_column_title(2, "Remove Root")
+	_anim_file_list.set_column_expand(0, true)
+	_anim_file_list.set_column_expand(1, false)
+	_anim_file_list.set_column_expand(2, false)
+	_anim_file_list.set_column_custom_minimum_width(1, 50)
+	_anim_file_list.set_column_custom_minimum_width(2, 100)
 	_rename_dialog.confirmed.connect(_on_rename_confirmed)
 
 	_bone_tree.set_column_title(0, "Mixamo Bone")
@@ -181,21 +193,27 @@ func _on_anims_selected(paths: PackedStringArray) -> void:
 			_animation_paths.append(path)
 			var display_name := path.get_file().get_basename().to_snake_case()
 			_animation_display_names.append(display_name)
-			_anim_file_list.add_item(display_name)
-
+			_animation_loop.append(false)
+			_animation_rm_root.append(false)
+	_rebuild_anim_tree()
 	_update_process_button_state()
 	_set_status(str(_animation_paths.size()) + " animation file(s) queued")
 
 
-func _on_anim_item_selected(index: int) -> void:
-	_remove_anim_button.disabled = index < 0 or index < _existing_anim_count
-
-
-func _on_anim_item_double_clicked(index: int) -> void:
-	if index < _existing_anim_count:
+func _on_anim_tree_item_selected() -> void:
+	var item := _anim_file_list.get_selected()
+	if not item:
+		_remove_anim_button.disabled = true
 		return
-	_renaming_index = index
-	_rename_edit.text = _animation_display_names[index]
+	_remove_anim_button.disabled = false
+
+
+func _on_anim_tree_item_activated() -> void:
+	var item := _anim_file_list.get_selected()
+	if not item: return
+	var idx: int = item.get_metadata(0)
+	_renaming_index = idx
+	_rename_edit.text = _animation_display_names[idx]
 	_rename_dialog.popup_centered()
 	_rename_edit.select_all()
 	_rename_edit.grab_focus()
@@ -207,28 +225,47 @@ func _on_rename_confirmed() -> void:
 	var new_name := _rename_edit.text.strip_edges().to_snake_case()
 	if new_name.is_empty():
 		return
-	_animation_display_names[_renaming_index] = new_name
-	_anim_file_list.set_item_text(_renaming_index, new_name)
+	if _renaming_index < _existing_anim_count:
+		var old_name := _animation_display_names[_renaming_index]
+		if old_name != new_name:
+			var lib := _get_selected_library()
+			if lib and lib.has_animation(old_name) and not lib.has_animation(new_name):
+				lib.rename_animation(old_name, new_name)
+				_save_current_library(lib)
+				_animation_display_names[_renaming_index] = new_name
+				_rebuild_anim_tree()
+	else:
+		_animation_display_names[_renaming_index] = new_name
+		_rebuild_anim_tree()
 	_renaming_index = -1
 
 
 func _on_remove_anim_pressed() -> void:
-	var selected_items := _anim_file_list.get_selected_items()
-	if selected_items.is_empty():
-		return
+	var item := _anim_file_list.get_selected()
+	if not item: return
+	var idx: int = item.get_metadata(0)
 
-	for i: int in range(selected_items.size() - 1, -1, -1):
-		var idx: int = selected_items[i]
-		if idx < _existing_anim_count:
-			continue
-		_anim_file_list.remove_item(idx)
-		_animation_paths.remove_at(idx - _existing_anim_count)
+	if idx < _existing_anim_count:
+		var name_to_remove := _animation_display_names[idx]
+		var lib := _get_selected_library()
+		if lib and lib.has_animation(name_to_remove):
+			lib.remove_animation(name_to_remove)
+			_save_current_library(lib)
 		_animation_display_names.remove_at(idx)
-
-	_remove_anim_button.disabled = true
-	_update_process_button_state()
-	var new_count := _animation_paths.size()
-	_set_status(str(new_count) + " new animation file(s) queued")
+		_existing_anim_count -= 1
+		_remove_anim_button.disabled = true
+		_rebuild_anim_tree()
+		_update_process_button_state()
+		_set_status("Removed '" + name_to_remove + "' from library.")
+	else:
+		_animation_paths.remove_at(idx - _existing_anim_count)
+		_animation_loop.remove_at(idx - _existing_anim_count)
+		_animation_rm_root.remove_at(idx - _existing_anim_count)
+		_animation_display_names.remove_at(idx)
+		_remove_anim_button.disabled = true
+		_rebuild_anim_tree()
+		_update_process_button_state()
+		_set_status(str(_animation_paths.size()) + " new animation file(s) queued")
 
 
 func _on_lib_selector_changed(index: int) -> void:
@@ -246,8 +283,59 @@ func _on_reprocess_pressed() -> void:
 	_run_process()
 
 
+func _on_anim_tree_item_edited() -> void:
+	var item := _anim_file_list.get_edited()
+	if not item: return
+	var column := _anim_file_list.get_edited_column()
+	var idx: int = item.get_metadata(0)
+	var is_checked := item.is_checked(column)
+
+	if idx < _existing_anim_count:
+		var anim_name := _animation_display_names[idx]
+		var lib := _get_selected_library()
+		if lib and lib.has_animation(anim_name):
+			var anim := lib.get_animation(anim_name)
+			if column == 1:
+				anim.loop_mode = Animation.LOOP_LINEAR if is_checked else Animation.LOOP_NONE
+				_save_current_library(lib)
+			elif column == 2:
+				if is_checked:
+					_animation_extractor.remove_root_track(anim)
+					_save_current_library(lib)
+					item.set_checked(2, false)
+					_set_status("Root motion removed from '" + anim_name + "'")
+	else:
+		var new_idx := idx - _existing_anim_count
+		if column == 1:
+			_animation_loop[new_idx] = is_checked
+		elif column == 2:
+			_animation_rm_root[new_idx] = is_checked
+
+
+func _get_selected_library() -> AnimationLibrary:
+	if not is_instance_valid(_linked_player): return null
+	var lib_name := _resolve_library_name()
+	if lib_name == "(default)": lib_name = ""
+	if lib_name == NEW_LIBRARY_LABEL: return null
+	if _linked_player.has_animation_library(lib_name):
+		return _linked_player.get_animation_library(lib_name)
+	return null
+
+
+func _save_current_library(lib: AnimationLibrary) -> void:
+	var lib_name := _resolve_library_name()
+	if lib_name == "(default)": lib_name = ""
+	var save_path := "res://animations/" + lib_name + ".tres"
+	_animation_extractor.save_library(lib, save_path)
+
+
 func _run_process() -> void:
-	if _animation_paths.is_empty() or not _bone_map or not _linked_player:
+	if not _linked_player:
+		return
+	if _animation_paths.is_empty():
+		_set_status("Existing animations are saved instantly. No new files to process.")
+		return
+	if not _bone_map:
 		return
 
 	if not is_instance_valid(_linked_player):
@@ -261,6 +349,19 @@ func _run_process() -> void:
 	if library_name.is_empty():
 		_set_status("Enter a library name")
 		return
+
+	var root := _anim_file_list.get_root()
+	var child := root.get_child(0) if root else null
+	var loops: Array[bool] = []
+	var rms: Array[bool] = []
+	while child:
+		var idx: int = child.get_metadata(0)
+		var loop := child.is_checked(1)
+		var rm := child.is_checked(2)
+		if idx >= _existing_anim_count:
+			loops.append(loop)
+			rms.append(rm)
+		child = child.get_next()
 
 	_process_button.disabled = true
 	_reprocess_button.disabled = true
@@ -291,7 +392,7 @@ func _run_process() -> void:
 		new_display_names.append(_animation_display_names[i])
 
 	var library := _animation_extractor.extract_and_build_library_named(
-		_animation_paths, new_display_names, library_name
+		_animation_paths, new_display_names, loops, rms, library_name
 	)
 
 	var save_path := "res://animations/" + library_name + ".tres"
@@ -330,6 +431,8 @@ func _on_reset_pressed() -> void:
 	_bone_map_save_path = ""
 	_animation_paths.clear()
 	_animation_display_names.clear()
+	_animation_loop.clear()
+	_animation_rm_root.clear()
 	_linked_player = null
 	_linked_player_path = NodePath()
 	_has_processed = false
@@ -393,57 +496,73 @@ func _populate_library_selector() -> void:
 
 func _load_existing_library_anims() -> void:
 	for i: int in range(_existing_anim_count - 1, -1, -1):
-		_anim_file_list.remove_item(i)
 		_animation_display_names.remove_at(i)
 	_existing_anim_count = 0
 
-	if not _lib_selector.visible or not _linked_player:
-		return
-	if not is_instance_valid(_linked_player):
-		return
-
-	var selected_text := _lib_selector.get_item_text(_lib_selector.selected)
-	if selected_text == NEW_LIBRARY_LABEL:
+	if not _lib_selector.visible or not _linked_player or not is_instance_valid(_linked_player):
+		_rebuild_anim_tree()
 		return
 
-	var lib_name := selected_text
-	if lib_name == "(default)":
-		lib_name = ""
-
-	if not _linked_player.has_animation_library(lib_name):
+	var lib_name := _resolve_library_name()
+	if lib_name == "(default)": lib_name = ""
+	if lib_name == NEW_LIBRARY_LABEL or not _linked_player.has_animation_library(lib_name):
+		_rebuild_anim_tree()
 		return
 
 	var lib := _linked_player.get_animation_library(lib_name)
-	var existing_anims := lib.get_animation_list()
+	var anim_names := lib.get_animation_list()
 
-	var anim_names: Array[StringName] = []
-	for a: StringName in existing_anims:
-		anim_names.append(a)
-
-	_anim_file_list.clear()
 	var new_names: PackedStringArray = []
-	for i: int in range(_existing_anim_count, _animation_display_names.size()):
-		new_names.append(_animation_display_names[i])
+	for name_str: String in _animation_display_names:
+		new_names.append(name_str)
 	_animation_display_names.clear()
 
 	for anim_name: StringName in anim_names:
-		var name_str := String(anim_name)
-		_animation_display_names.append(name_str)
-		_anim_file_list.add_item("[existing] " + name_str)
-		var idx := _anim_file_list.item_count - 1
-		_anim_file_list.set_item_custom_fg_color(idx, Color(0.54, 0.54, 0.6))
+		_animation_display_names.append(String(anim_name))
 
 	_existing_anim_count = anim_names.size()
 
 	for name_str: String in new_names:
 		_animation_display_names.append(name_str)
-		_anim_file_list.add_item(name_str)
+
+	_rebuild_anim_tree()
 
 	if _existing_anim_count > 0:
-		_set_status(
-			str(_existing_anim_count) + " existing + "
-			+ str(_animation_paths.size()) + " new animation(s)"
-		)
+		_set_status(str(_existing_anim_count) + " existing + " + str(_animation_paths.size()) + " new animation(s)")
+
+
+func _rebuild_anim_tree() -> void:
+	_anim_file_list.clear()
+	var root := _anim_file_list.create_item()
+
+	var lib: AnimationLibrary = null
+	if _lib_selector.visible and is_instance_valid(_linked_player):
+		var lib_name := _resolve_library_name()
+		if lib_name == "(default)": lib_name = ""
+		if lib_name != NEW_LIBRARY_LABEL and _linked_player.has_animation_library(lib_name):
+			lib = _linked_player.get_animation_library(lib_name)
+
+	for i: int in range(_animation_display_names.size()):
+		var name_str: String = _animation_display_names[i]
+		var is_existing := i < _existing_anim_count
+		var item := _anim_file_list.create_item(root)
+		item.set_metadata(0, i)
+		item.set_cell_mode(1, TreeItem.CELL_MODE_CHECK)
+		item.set_editable(1, true)
+		item.set_cell_mode(2, TreeItem.CELL_MODE_CHECK)
+		item.set_editable(2, true)
+
+		if is_existing:
+			item.set_text(0, "[existing] " + name_str)
+			item.set_custom_color(0, Color(0.54, 0.54, 0.6))
+			if lib and lib.has_animation(name_str):
+				var anim := lib.get_animation(name_str)
+				item.set_checked(1, anim.loop_mode != Animation.LOOP_NONE)
+		else:
+			item.set_text(0, name_str)
+			var new_idx := i - _existing_anim_count
+			item.set_checked(1, _animation_loop[new_idx])
+			item.set_checked(2, _animation_rm_root[new_idx])
 
 
 func _populate_bone_tree() -> void:
@@ -487,12 +606,13 @@ func _set_status(text: String) -> void:
 
 
 func _update_process_button_state() -> void:
-	var ready := (
+	var ready_for_new := (
 		not _model_path.is_empty()
 		and _linked_player != null
 		and not _animation_paths.is_empty()
 	)
-	_process_button.disabled = not ready
+	var has_existing := _existing_anim_count > 0 and _linked_player != null
+	_process_button.disabled = not (ready_for_new or has_existing)
 	_reprocess_button.disabled = not _has_processed
 
 
